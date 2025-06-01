@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from data.load_data import load_spotify_data_from_sheets
+from data.spotify_utils import add_track_lengths_to_df
 import pandas as pd
 
 def main():
@@ -18,6 +19,10 @@ def main():
         # Load data from Google Sheets
         df = load_spotify_data_from_sheets(SHEET_URL, CREDENTIALS_PATH)
         
+        # Add track lengths
+        print("\nFetching track lengths from Spotify...")
+        df = add_track_lengths_to_df(df)
+        
         # Basic data validation
         print("\nData Overview:")
         print(f"Total number of tracks: {len(df)}")
@@ -31,6 +36,12 @@ def main():
         # Basic statistics
         print("\nMost listened artists:")
         print(df['Artist'].value_counts().head())
+        
+        # Track length statistics
+        print("\nTrack length statistics (minutes):")
+        print(f"Average track length: {df['duration_min'].mean():.2f}")
+        print(f"Shortest track: {df['duration_min'].min():.2f}")
+        print(f"Longest track: {df['duration_min'].max():.2f}")
         
     except Exception as e:
         print(f"Error occurred: {str(e)}")
