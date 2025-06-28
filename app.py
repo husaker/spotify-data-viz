@@ -6,11 +6,9 @@ import os
 from dotenv import load_dotenv
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-import plotly.express as px
 import seaborn as sns
 import datetime
 import matplotlib.patheffects as pe
-import time
 
 st.set_page_config(layout="centered")
 
@@ -44,18 +42,10 @@ def load_raw_data():
     df = load_spotify_data_from_sheets(SHEET_URL, CREDENTIALS_PATH)
     return df
 
-@st.cache_data
-def enrich_track_lengths(df):
-    return add_track_lengths_to_df(df, max_workers=10)
-
-@st.cache_data
-def enrich_artist_info(df):
-    return add_artist_info_to_df(df, max_workers=10)
-
 def load_and_enrich_data():
     df = load_raw_data()
-    df = enrich_track_lengths(df)
-    df = enrich_artist_info(df)
+    df = add_track_lengths_to_df(df, max_workers=10)
+    df = add_artist_info_to_df(df, max_workers=10)
     return df
 
 def filter_by_date(df, date_from, date_to):
