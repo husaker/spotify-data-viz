@@ -4,6 +4,13 @@ from src.data.load_data import load_spotify_data_from_sheets
 from src.data.spotify_utils import add_track_lengths_to_df, add_images_to_df
 import os
 from dotenv import load_dotenv
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import plotly.express as px
+import seaborn as sns
+import datetime
+
+st.set_page_config(layout="centered")
 
 # Загрузка и обработка данных (кэшируем для ускорения)
 @st.cache_data
@@ -72,19 +79,90 @@ def show_top_tracks(df):
             st.markdown(f"<span style='color:gray'>Times listened: {int(row['times_listened'])}</span>", unsafe_allow_html=True)
             st.markdown(f"<span style='color:gray'>Minutes listened: {int(row['minutes_listened'])}</span>", unsafe_allow_html=True)
 
+def plot_cumulative_charts(df):
+    sns.set_theme(style="dark", rc={"axes.facecolor": "#222", "figure.facecolor": "#222", "axes.labelcolor": "#fff", "xtick.color": "#fff", "ytick.color": "#fff", "text.color": "#fff"})
+    daily = df.groupby('Date').size().rename('tracks').reset_index()
+    daily = daily.sort_values('Date')
+    daily['cumulative'] = daily['tracks'].cumsum()
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.lineplot(data=daily, x='Date', y='cumulative', ax=ax, color='#1DB954')
+    ax.set_title('Cumulative Tracks Played', color='w')
+    ax.set_ylabel('Tracks', color='w')
+    ax.set_xlabel('')
+    ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MO))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    plt.setp(ax.get_xticklabels(), rotation=45, ha='right', color='w')
+    plt.setp(ax.get_yticklabels(), color='w')
+    fig.patch.set_facecolor('#222')
+    ax.grid(axis='y', color='#444', alpha=0.35)
+    ax.grid(axis='x', visible=False)
+    st.pyplot(fig)
+
+    sns.set_theme(style="dark", rc={"axes.facecolor": "#222", "figure.facecolor": "#222", "axes.labelcolor": "#fff", "xtick.color": "#fff", "ytick.color": "#fff", "text.color": "#fff"})
+    daily = df.groupby('Date')['duration_min'].sum().reset_index()
+    daily = daily.sort_values('Date')
+    daily['cumulative'] = daily['duration_min'].cumsum()
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.lineplot(data=daily, x='Date', y='cumulative', ax=ax, color='#1DB954')
+    ax.set_title('Cumulative Minutes Listened', color='w')
+    ax.set_ylabel('Minutes', color='w')
+    ax.set_xlabel('')
+    ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MO))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    plt.setp(ax.get_xticklabels(), rotation=45, ha='right', color='w')
+    plt.setp(ax.get_yticklabels(), color='w')
+    fig.patch.set_facecolor('#222')
+    ax.grid(axis='y', color='#444', alpha=0.35)
+    ax.grid(axis='x', visible=False)
+    st.pyplot(fig)
+
+def show_statistics(df):
+    st.subheader('Overall Statistics')
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric('Unique Artists listened', df['Artist'].nunique())
+        st.metric('Unique Tracks played', df['Track'].nunique())
+    with col2:
+        st.metric('Total Minutes listened', int(df['duration_min'].sum()))
+        st.metric('Active Days', df['Date'].dt.date.nunique())
+
 def main():
     st.title('Spotify Listening Visualization')
     df = load_and_enrich_data()
-    # Фильтр по дате
     min_date, max_date = df['Date'].min().date(), df['Date'].max().date()
-    date_from, date_to = st.date_input('Filter: from/to', [min_date, max_date], min_value=min_date, max_value=max_date)
+    # Инициализация session_state для дат
+    if 'date_from' not in st.session_state:
+        st.session_state['date_from'] = min_date
+    if 'date_to' not in st.session_state:
+        st.session_state['date_to'] = max_date
+    # Кнопка сброса
+    if st.button('Reset date filter'):
+        st.session_state['date_from'] = min_date
+        st.session_state['date_to'] = max_date
+    col1, col2 = st.columns(2)
+    with col1:
+        date_from = st.date_input('From', min_value=min_date, max_value=max_date, value=st.session_state['date_from'], key='date_from')
+    with col2:
+        date_to = st.date_input('To', min_value=min_date, max_value=max_date, value=st.session_state['date_to'], key='date_to')
+    if date_from > date_to:
+        st.error('Начальная дата не может быть позже конечной!')
+        return
     filtered_df = filter_by_date(df, pd.to_datetime(date_from), pd.to_datetime(date_to))
     # Вкладки для переключения между графиками
-    tab1, tab2 = st.tabs(['Top 5 Artists', 'Top 5 Tracks'])
+    tab1, tab2, tab3, tab4 = st.tabs([
+        'Top 5 Artists',
+        'Top 5 Tracks',
+        'Cumulative Charts',
+        'Statistics',
+    ])
     with tab1:
         show_top_artists(filtered_df)
     with tab2:
         show_top_tracks(filtered_df)
+    with tab3:
+        plot_cumulative_charts(filtered_df)
+    with tab4:
+        show_statistics(filtered_df)
 
 if __name__ == '__main__':
     main() 
