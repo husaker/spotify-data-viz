@@ -9,8 +9,27 @@ import matplotlib.dates as mdates
 import plotly.express as px
 import seaborn as sns
 import datetime
+import matplotlib.patheffects as pe
 
 st.set_page_config(layout="centered")
+
+# Кастомный стиль для заголовков и скрытие иконки-якоря
+st.markdown('''
+    <style>
+    .spotify-green-title {
+        color: #1DB954 !important;
+        font-weight: bold;
+    }
+    .stTabs [data-baseweb="tab"] > div {
+        color: #1DB954 !important;
+        font-weight: bold;
+    }
+    /* Скрыть иконку-якорь у всех заголовков h1, h2, h3 */
+    .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a {
+        display: none !important;
+    }
+    </style>
+''', unsafe_allow_html=True)
 
 # Загрузка и обработка данных (кэшируем для ускорения)
 @st.cache_data
@@ -46,13 +65,12 @@ def top_tracks(df, n=5):
     return grouped.sort_values('times_listened', ascending=False).head(n).reset_index()
 
 def show_top_artists(df):
-    st.subheader('Top 5 Artists')
     top = top_artists(df)
     for _, row in top.iterrows():
         cols = st.columns([1, 3])
         with cols[0]:
             if pd.notna(row['artist_image_url']):
-                st.image(row['artist_image_url'], width=130)
+                st.image(row['artist_image_url'], width=150)
             else:
                 st.write('No image')
         with cols[1]:
@@ -61,7 +79,6 @@ def show_top_artists(df):
             st.markdown(f"<span style='color:gray'>Listened minutes: {int(row['listened_minutes'])}</span>", unsafe_allow_html=True)
 
 def show_top_tracks(df):
-    st.subheader('Top 5 Tracks')
     top = top_tracks(df)
     for _, row in top.iterrows():
         cols = st.columns([1, 3])
@@ -72,52 +89,53 @@ def show_top_tracks(df):
                 st.write('No cover')
         with cols[1]:
             st.markdown(f"<span style='font-size:22px; font-weight:bold'>{row['Track']}</span>", unsafe_allow_html=True)
-            st.markdown(
-                f"<span style='color:#888; font-weight:bold; font-size:18px'>{row['Artist']}</span>",
-                unsafe_allow_html=True
-            )
+            st.markdown(f"<span style='color:#888; font-weight:bold; font-size:18px'>{row['Artist']}</span>", unsafe_allow_html=True)
             st.markdown(f"<span style='color:gray'>Times listened: {int(row['times_listened'])}</span>", unsafe_allow_html=True)
             st.markdown(f"<span style='color:gray'>Minutes listened: {int(row['minutes_listened'])}</span>", unsafe_allow_html=True)
 
 def plot_cumulative_charts(df):
-    sns.set_theme(style="dark", rc={"axes.facecolor": "#222", "figure.facecolor": "#222", "axes.labelcolor": "#fff", "xtick.color": "#fff", "ytick.color": "#fff", "text.color": "#fff"})
+    # --- Tracks ---
+    sns.set_theme(style="dark", rc={"axes.facecolor": "#191414", "figure.facecolor": "#191414", "axes.labelcolor": "#fff", "xtick.color": "#fff", "ytick.color": "#fff", "text.color": "#fff"})
     daily = df.groupby('Date').size().rename('tracks').reset_index()
     daily = daily.sort_values('Date')
     daily['cumulative'] = daily['tracks'].cumsum()
     fig, ax = plt.subplots(figsize=(8, 4), dpi=200)
-    sns.lineplot(data=daily, x='Date', y='cumulative', ax=ax, color='#1DB954')
-    ax.set_title('Cumulative Tracks Played', color='w')
-    ax.set_ylabel('Tracks', color='w')
+    line, = ax.plot(daily['Date'], daily['cumulative'], color='#1DB954', linewidth=3)
+    # Glow-эффект
+    line.set_path_effects([pe.Stroke(linewidth=8, foreground='#1DB954', alpha=0.18), pe.Normal()])
+    ax.set_facecolor('#191414')
+    fig.patch.set_facecolor('#191414')
+    ax.grid(axis='y', color='#1DB954', alpha=0.08)
+    ax.grid(axis='x', visible=False)
+    ax.set_title('Cumulative Tracks Played', color='#1DB954', fontsize=18, fontweight='bold')
+    ax.set_ylabel('Tracks', color='w', fontsize=12)
     ax.set_xlabel('')
-    ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MO))
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right', color='w')
     plt.setp(ax.get_yticklabels(), color='w')
-    fig.patch.set_facecolor('#222')
-    ax.grid(axis='y', color='#444', alpha=0.35)
-    ax.grid(axis='x', visible=False)
+    # Маркер на последней точке
+    ax.plot(daily['Date'].iloc[-1], daily['cumulative'].iloc[-1], 'o', color='white', markersize=8, markeredgewidth=2, markeredgecolor='#1DB954')
     st.pyplot(fig)
 
-    sns.set_theme(style="dark", rc={"axes.facecolor": "#222", "figure.facecolor": "#222", "axes.labelcolor": "#fff", "xtick.color": "#fff", "ytick.color": "#fff", "text.color": "#fff"})
+    # --- Minutes ---
     daily = df.groupby('Date')['duration_min'].sum().reset_index()
     daily = daily.sort_values('Date')
     daily['cumulative'] = daily['duration_min'].cumsum()
     fig, ax = plt.subplots(figsize=(8, 4), dpi=200)
-    sns.lineplot(data=daily, x='Date', y='cumulative', ax=ax, color='#1DB954')
-    ax.set_title('Cumulative Minutes Listened', color='w')
-    ax.set_ylabel('Minutes', color='w')
+    line, = ax.plot(daily['Date'], daily['cumulative'], color='#1DB954', linewidth=3)
+    line.set_path_effects([pe.Stroke(linewidth=8, foreground='#1DB954', alpha=0.18), pe.Normal()])
+    ax.set_facecolor('#191414')
+    fig.patch.set_facecolor('#191414')
+    ax.grid(axis='y', color='#1DB954', alpha=0.08)
+    ax.grid(axis='x', visible=False)
+    ax.set_title('Cumulative Minutes Listened', color='#1DB954', fontsize=18, fontweight='bold')
+    ax.set_ylabel('Minutes', color='w', fontsize=12)
     ax.set_xlabel('')
-    ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MO))
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right', color='w')
     plt.setp(ax.get_yticklabels(), color='w')
-    fig.patch.set_facecolor('#222')
-    ax.grid(axis='y', color='#444', alpha=0.35)
-    ax.grid(axis='x', visible=False)
+    ax.plot(daily['Date'].iloc[-1], daily['cumulative'].iloc[-1], 'o', color='white', markersize=8, markeredgewidth=2, markeredgecolor='#1DB954')
     st.pyplot(fig)
 
 def show_statistics(df):
-    st.subheader('Overall Statistics')
     col1, col2 = st.columns(2)
     with col1:
         st.metric('Unique Artists listened', df['Artist'].nunique())
@@ -126,29 +144,36 @@ def show_statistics(df):
     with col2:
         st.metric('Total Minutes listened', int(df['duration_min'].sum()))
         st.metric('Active Days', df['Date'].dt.date.nunique())
-        # Любимый жанр
         if 'genre' in df.columns and df['genre'].notna().any():
             top_genre = df['genre'].value_counts().idxmax()
-            top_genre_count = df['genre'].value_counts().max()
             st.metric('Favorite Genre', f'{top_genre}')
         else:
             st.metric('Favorite Genre', 'N/A')
 
 def plot_top_genres(df):
-    sns.set_theme(style="dark", rc={"axes.facecolor": "#222", "figure.facecolor": "#222", "axes.labelcolor": "#fff", "xtick.color": "#fff", "ytick.color": "#fff", "text.color": "#fff"})
+    sns.set_theme(style="dark", rc={"axes.facecolor": "#191414", "figure.facecolor": "#191414", "axes.labelcolor": "#fff", "xtick.color": "#fff", "ytick.color": "#fff", "text.color": "#fff"})
     genre_counts = df['genre'].value_counts().dropna().head(5)
+    colors = ["#1DB954"] + ["#1ed760"]*4  # Первый столбец ярче
+    genre_labels = genre_counts.index.to_list()
     fig, ax = plt.subplots(figsize=(8, 4), dpi=400)
-    sns.barplot(x=genre_counts.values, y=genre_counts.index, ax=ax, palette=["#1DB954"]*5)
-    ax.set_title('Top 5 Genres by Tracks Played', color='w')
-    ax.set_xlabel('Tracks', color='w')
-    ax.set_ylabel('Genre', color='w')
+    sns.barplot(
+        x=genre_counts.values,
+        y=genre_labels,
+        hue=genre_labels,
+        palette=colors,
+        ax=ax,
+        legend=False
+    )
+    ax.set_title('Top 5 Genres by Tracks Played', color='#1DB954', fontsize=16, fontweight='bold')
+    ax.set_xlabel('Tracks', color='w', fontsize=12)
+    ax.set_ylabel('Genre', color='w', fontsize=12)
     plt.setp(ax.get_xticklabels(), color='w')
     plt.setp(ax.get_yticklabels(), color='w')
-    fig.patch.set_facecolor('#222')
+    fig.patch.set_facecolor('#191414')
     st.pyplot(fig)
 
 def main():
-    st.title('Spotify Listening Visualization')
+    st.markdown('<h1 class="spotify-green-title">Spotify Listening Visualization</h1>', unsafe_allow_html=True)
     df = load_and_enrich_data()
     min_date, max_date = df['Date'].min().date(), df['Date'].max().date()
     # Инициализация session_state для дат
@@ -180,14 +205,19 @@ def main():
         'Statistics',
     ])
     with tab1:
+        st.markdown('<h2 class="spotify-green-title">Top 5 Artists</h2>', unsafe_allow_html=True)
         show_top_artists(filtered_df)
     with tab2:
+        st.markdown('<h2 class="spotify-green-title">Top 5 Tracks</h2>', unsafe_allow_html=True)
         show_top_tracks(filtered_df)
     with tab3:
+        st.markdown('<h2 class="spotify-green-title">Cumulative Charts</h2>', unsafe_allow_html=True)
         plot_cumulative_charts(filtered_df)
     with tab4:
+        st.markdown('<h2 class="spotify-green-title">Top 5 Genres</h2>', unsafe_allow_html=True)
         plot_top_genres(filtered_df)
     with tab5:
+        st.markdown('<h2 class="spotify-green-title">Statistics</h2>', unsafe_allow_html=True)
         show_statistics(filtered_df)
 
 if __name__ == '__main__':
