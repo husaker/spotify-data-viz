@@ -53,11 +53,12 @@ def process_batch(batch_info):
     batch_ids, sp = batch_info
     return get_tracks_batch(batch_ids, sp)
 
-def add_track_lengths_to_df(df):
+def add_track_lengths_to_df(df, max_workers=5):
     """
     Add track lengths to the DataFrame using parallel batch processing.
     Args:
         df (pd.DataFrame): DataFrame containing Spotify track IDs
+        max_workers (int): Number of threads for parallel processing.
     Returns:
         pd.DataFrame: DataFrame with added 'duration_ms' column
     """
@@ -69,7 +70,7 @@ def add_track_lengths_to_df(df):
     batches = [(unique_track_ids[i:i + BATCH_SIZE], sp) 
               for i in range(0, len(unique_track_ids), BATCH_SIZE)]
     track_durations = {}
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(process_batch, batch) for batch in batches]
         for future in as_completed(futures):
             batch_durations = future.result()
@@ -128,10 +129,11 @@ def process_images_batch(batch_info):
     batch_ids, sp = batch_info
     return get_tracks_and_artists_batch(batch_ids, sp)
 
-def add_artist_info_to_df(df):
+def add_artist_info_to_df(df, max_workers=5):
     """
     Добавляет в DataFrame колонки track_cover_url, artist_image_url и genre, используя Spotify API.
     Работает параллельно батчами.
+    max_workers (int): Number of threads for parallel processing.
     """
     df_with_info = df.copy()
     unique_track_ids = df_with_info['Spotify ID'].unique()
@@ -142,7 +144,7 @@ def add_artist_info_to_df(df):
               for i in range(0, len(unique_track_ids), BATCH_SIZE)]
     track_covers = {}
     track_to_artist = {}
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(process_images_batch, batch) for batch in batches]
         for future in as_completed(futures):
             batch_result = future.result()
