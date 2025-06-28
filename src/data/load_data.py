@@ -4,6 +4,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import os
 import tempfile
 import json
+from dotenv import load_dotenv
 
 def load_spotify_data_from_sheets(sheet_url, credentials_path):
     """
@@ -16,22 +17,29 @@ def load_spotify_data_from_sheets(sheet_url, credentials_path):
     Returns:
         pd.DataFrame: DataFrame containing the Spotify listening data
     """
+    load_dotenv()
+
     # Check for credentials in environment variable
     credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
     if credentials_json:
-        # If the value is a JSON string, ensure it's properly formatted
-        if credentials_json.startswith('{'):
-            credentials_json = json.dumps(json.loads(credentials_json))
-        # Create a temporary file for the credentials
+        credentials_dict = json.loads(credentials_json)
+        if "private_key" in credentials_dict:
+            credentials_dict["private_key"] = credentials_dict["private_key"].replace("\\n", "\n")
+        credentials_json = json.dumps(credentials_dict)
         with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as tmp:
             tmp.write(credentials_json)
             tmp.flush()
             credentials_path = tmp.name
+    
     # Define the scope
     scope = ['https://spreadsheets.google.com/feeds',
              'https://www.googleapis.com/auth/drive']
     
     # Add credentials to the account
+    print("DEBUG: credentials_path =", credentials_path)
+    with open(credentials_path, "r") as f:
+        print("DEBUG: credentials file content:")
+        print(f.read())
     creds = ServiceAccountCredentials.from_json_keyfile_name(credentials_path, scope)
     client = gspread.authorize(creds)
     
@@ -47,4 +55,4 @@ def load_spotify_data_from_sheets(sheet_url, credentials_path):
     # Convert date column to datetime
     df['Date'] = pd.to_datetime(df['Date'])
     
-    return df 
+    return df
