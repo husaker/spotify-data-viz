@@ -147,13 +147,13 @@ def process_images_batch(batch_info):
     batch_ids, sp = batch_info
     return get_tracks_and_artists_batch(batch_ids, sp)
 
-def add_images_to_df(df):
+def add_artist_info_to_df(df):
     """
-    Добавляет в DataFrame колонки track_cover_url и artist_image_url, используя Spotify API.
+    Добавляет в DataFrame колонки track_cover_url, artist_image_url и genre, используя Spotify API.
     Работает параллельно батчами.
     """
-    df_with_images = df.copy()
-    unique_track_ids = df_with_images['Spotify ID'].unique()
+    df_with_info = df.copy()
+    unique_track_ids = df_with_info['Spotify ID'].unique()
     print(f"\nFetching cover images and artist ids for {len(unique_track_ids)} tracks from Spotify...")
     sp = get_spotify_client()
     BATCH_SIZE = 50
@@ -168,11 +168,89 @@ def add_images_to_df(df):
             for track_id, (cover_url, artist_id) in batch_result.items():
                 track_covers[track_id] = cover_url
                 track_to_artist[track_id] = artist_id
-    df_with_images['track_cover_url'] = df_with_images['Spotify ID'].map(track_covers)
+    df_with_info['track_cover_url'] = df_with_info['Spotify ID'].map(track_covers)
     # Получаем уникальные artist_id
     unique_artist_ids = set([aid for aid in track_to_artist.values() if aid])
-    print(f"\nFetching artist images for {len(unique_artist_ids)} artists from Spotify...")
-    artist_images = get_artists_images_batch(unique_artist_ids, sp)
-    # Маппим artist_image_url по artist_id для каждой строки
-    df_with_images['artist_image_url'] = df_with_images['Spotify ID'].map(lambda tid: artist_images.get(track_to_artist.get(tid)))
-    return df_with_images 
+    print(f"\nFetching artist images and genres for {len(unique_artist_ids)} artists from Spotify...")
+    # Batch запрос к артистам для получения image и genre
+    artist_images = {}
+    artist_genres = {}
+    BATCH_SIZE = 50
+    artist_ids_list = list(unique_artist_ids)
+    for i in range(0, len(artist_ids_list), BATCH_SIZE):
+        batch_ids = artist_ids_list[i:i+BATCH_SIZE]
+        try:
+            artists = sp.artists(batch_ids)['artists']
+            for artist in artists:
+                image_url = artist['images'][0]['url'] if artist['images'] else None
+                genre = artist['genres'][0] if artist['genres'] else None
+                artist_images[artist['id']] = image_url
+                artist_genres[artist['id']] = genre
+        except Exception as e:
+            print(f"Error getting artists batch {batch_ids}: {str(e)}")
+            for artist_id in batch_ids:
+                artist_images[artist_id] = None
+                artist_genres[artist_id] = None
+    df_with_info['artist_image_url'] = df_with_info['Spotify ID'].map(lambda tid: artist_images.get(track_to_artist.get(tid)))
+    df_with_info['genre'] = df_with_info['Spotify ID'].map(lambda tid: artist_genres.get(track_to_artist.get(tid)))
+    return df_with_info
+
+# Алиас для обратной совместимости
+add_images_to_df = add_artist_info_to_df
+
+def get_artists_genres_batch(artist_ids, sp):
+    """
+    Получить жанры артистов батчем через sp.artists (до 50 id за раз).
+    Возвращает dict: artist_id -> genre (первый жанр или None)
+    """
+    try:
+        result = {}
+        artist_ids = list(artist_ids)
+        BATCH_SIZE = 50
+        for i in range(0, len(artist_ids), BATCH_SIZE):
+            batch_ids = artist_ids[i:i+BATCH_SIZE]
+            try:
+                artists = sp.artists(batch_ids)['artists']
+                for artist in artists:
+                    genre = artist['genres'][0] if artist['genres'] else None
+                    result[artist['id']] = genre
+            except Exception as e:
+                print(f"Error getting artists batch {batch_ids}: {str(e)}")
+                for artist_id in batch_ids:
+                    result[artist_id] = None
+        return result
+    except Exception as e:
+        print(f"Error in get_artists_genres_batch: {str(e)}")
+        return {}
+
+def add_genres_to_df(df):
+    """
+    Добавляет в DataFrame колонку 'genre' по artist_id через Spotify API.
+    Работает батчами и параллельно.
+    """
+    df_with_genres = df.copy()
+    # Получаем artist_id для каждого трека (если нет - None)
+    if 'Spotify ID' not in df_with_genres.columns:
+        raise ValueError('DataFrame должен содержать колонку Spotify ID')
+    if 'artist_image_url' not in df_with_genres.columns:
+        raise ValueError('Сначала обогатите DataFrame функцией add_images_to_df')
+    # Получаем artist_id через уже существующий маппинг
+    from tqdm import tqdm
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    sp = get_spotify_client()
+    # Получаем artist_id для каждого трека
+    if 'artist_id' not in df_with_genres.columns:
+        # Вытаскиваем через cover enrichment (track_to_artist)
+        # Но проще повторно получить через API, если нет
+        def get_artist_id(spotify_id):
+            try:
+                track = sp.track(spotify_id)
+                return track['artists'][0]['id'] if track['artists'] else None
+            except:
+                return None
+        df_with_genres['artist_id'] = df_with_genres['Spotify ID'].map(get_artist_id)
+    unique_artist_ids = set(df_with_genres['artist_id'].dropna())
+    print(f"\nFetching genres for {len(unique_artist_ids)} artists from Spotify...")
+    artist_genres = get_artists_genres_batch(unique_artist_ids, sp)
+    df_with_genres['genre'] = df_with_genres['artist_id'].map(artist_genres)
+    return df_with_genres 
