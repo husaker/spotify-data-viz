@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from src.data.load_data import load_spotify_data_from_sheets
-from src.data.spotify_utils import add_track_lengths_to_df, add_images_to_df
+from src.data.spotify_utils import add_track_lengths_to_df, add_images_to_df, add_artist_info_to_df
 import os
 from dotenv import load_dotenv
 import matplotlib.pyplot as plt
@@ -10,6 +10,7 @@ import plotly.express as px
 import seaborn as sns
 import datetime
 import matplotlib.patheffects as pe
+import time
 
 st.set_page_config(layout="centered")
 
@@ -33,7 +34,7 @@ st.markdown('''
 
 # Загрузка и обработка данных (кэшируем для ускорения)
 @st.cache_data
-def load_and_enrich_data():
+def load_raw_data():
     load_dotenv()
     SHEET_URL = os.getenv('GOOGLE_SHEET_URL')
     CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH')
@@ -41,8 +42,12 @@ def load_and_enrich_data():
         st.error('GOOGLE_SHEET_URL и GOOGLE_CREDENTIALS_PATH не заданы в .env')
         st.stop()
     df = load_spotify_data_from_sheets(SHEET_URL, CREDENTIALS_PATH)
+    return df
+
+def load_and_enrich_data():
+    df = load_raw_data()
     df = add_track_lengths_to_df(df)
-    df = add_images_to_df(df)
+    df = add_artist_info_to_df(df)
     return df
 
 def filter_by_date(df, date_from, date_to):

@@ -56,48 +56,29 @@ def process_batch(batch_info):
 def add_track_lengths_to_df(df):
     """
     Add track lengths to the DataFrame using parallel batch processing.
-    
     Args:
         df (pd.DataFrame): DataFrame containing Spotify track IDs
-    
     Returns:
         pd.DataFrame: DataFrame with added 'duration_ms' column
     """
-    # Create a copy to avoid modifying the original
     df_with_lengths = df.copy()
-    
-    # Get unique track IDs
     unique_track_ids = df_with_lengths['Spotify ID'].unique()
-    
     print(f"\nFetching {len(unique_track_ids)} tracks from Spotify...")
-    
-    # Initialize Spotify client
     sp = get_spotify_client()
-    
-    # Process tracks in batches of 50 (Spotify API limit)
     BATCH_SIZE = 50
     batches = [(unique_track_ids[i:i + BATCH_SIZE], sp) 
               for i in range(0, len(unique_track_ids), BATCH_SIZE)]
-    
-    # Process batches in parallel
     track_durations = {}
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(process_batch, batch) for batch in batches]
-        
-        # Process results as they complete
-        for future in tqdm(as_completed(futures), total=len(batches), desc="Processing batches"):
+        for future in as_completed(futures):
             batch_durations = future.result()
             track_durations.update(batch_durations)
-    
-    # Map durations back to the DataFrame
     df_with_lengths['duration_ms'] = df_with_lengths['Spotify ID'].map(track_durations)
-    
-    # Convert milliseconds to minutes for better readability
     df_with_lengths['duration_min'] = df_with_lengths['duration_ms'].apply(
         lambda x: round(x/60000, 2) if x is not None else None
     )
-    
-    return df_with_lengths 
+    return df_with_lengths
 
 def get_tracks_and_artists_batch(track_ids, sp):
     """
@@ -163,16 +144,14 @@ def add_artist_info_to_df(df):
     track_to_artist = {}
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(process_images_batch, batch) for batch in batches]
-        for future in tqdm(as_completed(futures), total=len(batches), desc="Processing image batches"):
+        for future in as_completed(futures):
             batch_result = future.result()
             for track_id, (cover_url, artist_id) in batch_result.items():
                 track_covers[track_id] = cover_url
                 track_to_artist[track_id] = artist_id
     df_with_info['track_cover_url'] = df_with_info['Spotify ID'].map(track_covers)
-    # Получаем уникальные artist_id
     unique_artist_ids = set([aid for aid in track_to_artist.values() if aid])
     print(f"\nFetching artist images and genres for {len(unique_artist_ids)} artists from Spotify...")
-    # Batch запрос к артистам для получения image и genre
     artist_images = {}
     artist_genres = {}
     BATCH_SIZE = 50
