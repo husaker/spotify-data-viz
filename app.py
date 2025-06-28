@@ -35,11 +35,10 @@ st.markdown('''
 def load_raw_data():
     load_dotenv()
     SHEET_URL = os.getenv('GOOGLE_SHEET_URL')
-    CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH')
-    if not SHEET_URL or not CREDENTIALS_PATH:
-        st.error('GOOGLE_SHEET_URL и GOOGLE_CREDENTIALS_PATH не заданы в .env')
+    if not SHEET_URL:
+        st.error('GOOGLE_SHEET_URL не задан в .env')
         st.stop()
-    df = load_spotify_data_from_sheets(SHEET_URL, CREDENTIALS_PATH)
+    df = load_spotify_data_from_sheets(SHEET_URL)
     return df
 
 def load_and_enrich_data():
