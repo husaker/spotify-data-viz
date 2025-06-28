@@ -30,8 +30,8 @@ st.markdown('''
     </style>
 ''', unsafe_allow_html=True)
 
-# Загрузка и обработка данных (кэшируем для ускорения)
-@st.cache_data
+# Кэшируем загрузку и обогащение данных
+@st.cache_data(show_spinner=True)
 def load_raw_data():
     load_dotenv()
     SHEET_URL = os.getenv('GOOGLE_SHEET_URL')
@@ -41,10 +41,18 @@ def load_raw_data():
     df = load_spotify_data_from_sheets(SHEET_URL)
     return df
 
+@st.cache_data(show_spinner=True)
+def enrich_track_lengths(df):
+    return add_track_lengths_to_df(df, max_workers=2)
+
+@st.cache_data(show_spinner=True)
+def enrich_artist_info(df):
+    return add_artist_info_to_df(df, max_workers=2)
+
 def load_and_enrich_data():
     df = load_raw_data()
-    df = add_track_lengths_to_df(df, max_workers=10)
-    df = add_artist_info_to_df(df, max_workers=10)
+    df = enrich_track_lengths(df)
+    df = enrich_artist_info(df)
     return df
 
 def filter_by_date(df, date_from, date_to):
