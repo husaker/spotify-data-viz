@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 from data.load_data import load_spotify_data_from_sheets
-from data.spotify_utils import add_track_lengths_to_df
+from data.spotify_utils import add_track_lengths_to_df, add_images_to_df
 import pandas as pd
 
 def main():
@@ -23,6 +23,10 @@ def main():
         print("\nFetching track lengths from Spotify...")
         df = add_track_lengths_to_df(df)
         
+        # Add track and artist images
+        print("\nFetching track and artist images from Spotify...")
+        df = add_images_to_df(df)
+        
         # Basic data validation
         print("\nData Overview:")
         print(f"Total number of tracks: {len(df)}")
@@ -32,6 +36,12 @@ def main():
         # Display first few rows
         print("\nFirst 5 rows of the data:")
         print(df.head())
+        
+        # Show example image URLs
+        print("\nExample track cover URL:")
+        print(df['track_cover_url'].dropna().iloc[0] if df['track_cover_url'].notna().any() else "No cover found")
+        print("Example artist image URL:")
+        print(df['artist_image_url'].dropna().iloc[0] if df['artist_image_url'].notna().any() else "No artist image found")
         
         # Basic statistics
         print("\nMost listened artists:")
