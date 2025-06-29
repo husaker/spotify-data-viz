@@ -9,10 +9,11 @@ import matplotlib.dates as mdates
 import seaborn as sns
 import datetime
 import matplotlib.patheffects as pe
+from src.data.cache_utils import save_enriched_df, load_enriched_df
 
 st.set_page_config(layout="centered")
 
-# Кастомный стиль для заголовков и скрытие иконки-якоря
+# Custom style for headers and hiding anchor icon
 st.markdown('''
     <style>
     .spotify-green-title {
@@ -23,20 +24,20 @@ st.markdown('''
         color: #1DB954 !important;
         font-weight: bold;
     }
-    /* Скрыть иконку-якорь у всех заголовков h1, h2, h3 */
+    /* Hide anchor icon for all h1, h2, h3 headers */
     .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a {
         display: none !important;
     }
     </style>
 ''', unsafe_allow_html=True)
 
-# Кэшируем загрузку и обогащение данных
+# Cache loading and enrichment of data
 @st.cache_data(show_spinner=True)
 def load_raw_data():
     load_dotenv()
     SHEET_URL = os.getenv('GOOGLE_SHEET_URL')
     if not SHEET_URL:
-        st.error('GOOGLE_SHEET_URL не задан в .env')
+        st.error('GOOGLE_SHEET_URL is not set in .env')
         st.stop()
     df = load_spotify_data_from_sheets(SHEET_URL)
     return df
@@ -50,10 +51,26 @@ def enrich_artist_info(df):
     return add_artist_info_to_df(df, max_workers=2)
 
 def load_and_enrich_data():
-    df = load_raw_data()
-    df = enrich_track_lengths(df)
-    df = enrich_artist_info(df)
-    return df
+    cache_path = "data/cache/enriched_data.pkl"
+    raw_df = load_raw_data()
+    enriched_df = load_enriched_df(cache_path)
+    if enriched_df is not None:
+        # Find new tracks that are not in the cache
+        new_tracks = raw_df[~raw_df['Spotify ID'].isin(enriched_df['Spotify ID'])]
+        if not new_tracks.empty:
+            new_enriched = enrich_track_lengths(new_tracks)
+            new_enriched = enrich_artist_info(new_enriched)
+            # Combine old cache and new enriched data
+            enriched_df = pd.concat([enriched_df, new_enriched], ignore_index=True)
+            save_enriched_df(enriched_df, cache_path)
+        # Return the enriched DataFrame (no deduplication)
+        return enriched_df
+    else:
+        # No cache — enrich all data
+        enriched_df = enrich_track_lengths(raw_df)
+        enriched_df = enrich_artist_info(enriched_df)
+        save_enriched_df(enriched_df, cache_path)
+        return enriched_df
 
 def filter_by_date(df, date_from, date_to):
     return df[(df['Date'] >= date_from) & (df['Date'] <= date_to)]
@@ -111,7 +128,7 @@ def plot_cumulative_charts(df):
     daily['cumulative'] = daily['tracks'].cumsum()
     fig, ax = plt.subplots(figsize=(8, 4), dpi=200)
     line, = ax.plot(daily['Date'], daily['cumulative'], color='#1DB954', linewidth=3)
-    # Glow-эффект
+    # Glow-effect
     line.set_path_effects([pe.Stroke(linewidth=8, foreground='#1DB954', alpha=0.18), pe.Normal()])
     ax.set_facecolor('#191414')
     fig.patch.set_facecolor('#191414')
@@ -122,7 +139,7 @@ def plot_cumulative_charts(df):
     ax.set_xlabel('')
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right', color='w')
     plt.setp(ax.get_yticklabels(), color='w')
-    # Маркер на последней точке
+    # Marker on the last point
     ax.plot(daily['Date'].iloc[-1], daily['cumulative'].iloc[-1], 'o', color='white', markersize=8, markeredgewidth=2, markeredgecolor='#1DB954')
     st.pyplot(fig)
 
@@ -163,10 +180,10 @@ def show_statistics(df):
 def plot_top_genres(df):
     sns.set_theme(style="dark", rc={"axes.facecolor": "#191414", "figure.facecolor": "#191414", "axes.labelcolor": "#fff", "xtick.color": "#fff", "ytick.color": "#fff", "text.color": "#fff"})
     genre_counts = df['genre'].value_counts().dropna().head(5)
-    colors = ["#1DB954"] + ["#1ed760"]*4  # Первый столбец ярче
+    colors = ["#1DB954"] + ["#1ed760"]*4  # First column brighter
     genre_labels = genre_counts.index.to_list()
     fig, ax = plt.subplots(figsize=(8, 4), dpi=400)
-    sns.barplot(
+    bars = sns.barplot(
         x=genre_counts.values,
         y=genre_labels,
         hue=genre_labels,
@@ -174,6 +191,9 @@ def plot_top_genres(df):
         ax=ax,
         legend=False
     )
+    # Annotate each bar with the number of tracks inside the bar, near the right end
+    for i, (value, label) in enumerate(zip(genre_counts.values, genre_labels)):
+        ax.text(value * 0.90, i, str(value), va='center', ha='center', color='#191414', fontsize=12, fontweight='bold')
     ax.set_title('Top 5 Genres by Tracks Played', color='#1DB954', fontsize=16, fontweight='bold')
     ax.set_xlabel('Tracks', color='w', fontsize=12)
     ax.set_ylabel('Genre', color='w', fontsize=12)
@@ -186,12 +206,12 @@ def main():
     st.markdown('<h1 class="spotify-green-title">Spotify Listening Visualization</h1>', unsafe_allow_html=True)
     df = load_and_enrich_data()
     min_date, max_date = df['Date'].min().date(), df['Date'].max().date()
-    # Инициализация session_state для дат
+    # Initialize session_state for dates
     if 'date_from' not in st.session_state:
         st.session_state['date_from'] = min_date
     if 'date_to' not in st.session_state:
         st.session_state['date_to'] = max_date
-    # Кнопка сброса
+    # Reset button
     if st.button('Reset date filter'):
         st.session_state['date_from'] = min_date
         st.session_state['date_to'] = max_date
@@ -203,10 +223,10 @@ def main():
     date_from = st.session_state['date_from']
     date_to = st.session_state['date_to']
     if date_from > date_to:
-        st.error('Начальная дата не может быть позже конечной!')
+        st.error('Start date cannot be later than end date!')
         return
     filtered_df = filter_by_date(df, pd.to_datetime(date_from), pd.to_datetime(date_to))
-    # Вкладки для переключения между графиками
+    # Tabs for switching between graphs
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         'Top 5 Artists',
         'Top 5 Tracks',

@@ -31,5 +31,5 @@ def load_spotify_data_from_sheets(sheet_url):
     sheet = client.open_by_url(sheet_url).sheet1
     data = sheet.get_all_records()
     df = pd.DataFrame(data)
-    df['Date'] = pd.to_datetime(df['Date'])
+    df['Date'] = pd.to_datetime(df['Date'], format='%b %d, %Y at %I:%M%p', errors='coerce')
     return df

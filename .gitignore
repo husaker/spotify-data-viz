@@ -17,4 +17,7 @@ ENV/
 
 # Credentials
 credentials/
-*.json 
+*.json
+
+test_*.py
+**/test_*.py 
