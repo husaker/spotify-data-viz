@@ -106,4 +106,24 @@ def load_enriched_df(cache_path):
     if os.path.exists(cache_path):
         with open(cache_path, 'rb') as f:
             return pickle.load(f)
-    return None 
+    return None
+
+def save_track_cache(track_cache, path):
+    with open(path, 'wb') as f:
+        pickle.dump(track_cache, f)
+
+def load_track_cache(path):
+    if not os.path.exists(path):
+        return {}
+    with open(path, 'rb') as f:
+        return pickle.load(f)
+
+def save_artist_cache(artist_cache, path):
+    with open(path, 'wb') as f:
+        pickle.dump(artist_cache, f)
+
+def load_artist_cache(path):
+    if not os.path.exists(path):
+        return {}
+    with open(path, 'rb') as f:
+        return pickle.load(f) 

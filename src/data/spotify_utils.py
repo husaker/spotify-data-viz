@@ -53,34 +53,6 @@ def process_batch(batch_info):
     batch_ids, sp = batch_info
     return get_tracks_batch(batch_ids, sp)
 
-def add_track_lengths_to_df(df, max_workers=5):
-    """
-    Add track lengths to the DataFrame using parallel batch processing.
-    Args:
-        df (pd.DataFrame): DataFrame containing Spotify track IDs
-        max_workers (int): Number of threads for parallel processing.
-    Returns:
-        pd.DataFrame: DataFrame with added 'duration_ms' column
-    """
-    df_with_lengths = df.copy()
-    unique_track_ids = df_with_lengths['Spotify ID'].unique()
-    print(f"\nFetching {len(unique_track_ids)} tracks from Spotify...")
-    sp = get_spotify_client()
-    BATCH_SIZE = 50
-    batches = [(unique_track_ids[i:i + BATCH_SIZE], sp) 
-              for i in range(0, len(unique_track_ids), BATCH_SIZE)]
-    track_durations = {}
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(process_batch, batch) for batch in batches]
-        for future in as_completed(futures):
-            batch_durations = future.result()
-            track_durations.update(batch_durations)
-    df_with_lengths['duration_ms'] = df_with_lengths['Spotify ID'].map(track_durations)
-    df_with_lengths['duration_min'] = df_with_lengths['duration_ms'].apply(
-        lambda x: round(x/60000, 2) if x is not None else None
-    )
-    return df_with_lengths
-
 def get_tracks_and_artists_batch(track_ids, sp):
     """
     Получить обложку трека и artist_id для батча треков.
@@ -128,56 +100,6 @@ def get_artists_images_batch(artist_ids, sp):
 def process_images_batch(batch_info):
     batch_ids, sp = batch_info
     return get_tracks_and_artists_batch(batch_ids, sp)
-
-def add_artist_info_to_df(df, max_workers=5):
-    """
-    Добавляет в DataFrame колонки track_cover_url, artist_image_url и genre, используя Spotify API.
-    Работает параллельно батчами.
-    max_workers (int): Number of threads for parallel processing.
-    """
-    df_with_info = df.copy()
-    unique_track_ids = df_with_info['Spotify ID'].unique()
-    print(f"\nFetching cover images and artist ids for {len(unique_track_ids)} tracks from Spotify...")
-    sp = get_spotify_client()
-    BATCH_SIZE = 50
-    batches = [(unique_track_ids[i:i + BATCH_SIZE], sp)
-              for i in range(0, len(unique_track_ids), BATCH_SIZE)]
-    track_covers = {}
-    track_to_artist = {}
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(process_images_batch, batch) for batch in batches]
-        for future in as_completed(futures):
-            batch_result = future.result()
-            for track_id, (cover_url, artist_id) in batch_result.items():
-                track_covers[track_id] = cover_url
-                track_to_artist[track_id] = artist_id
-    df_with_info['track_cover_url'] = df_with_info['Spotify ID'].map(track_covers)
-    unique_artist_ids = set([aid for aid in track_to_artist.values() if aid])
-    print(f"\nFetching artist images and genres for {len(unique_artist_ids)} artists from Spotify...")
-    artist_images = {}
-    artist_genres = {}
-    BATCH_SIZE = 50
-    artist_ids_list = list(unique_artist_ids)
-    for i in range(0, len(artist_ids_list), BATCH_SIZE):
-        batch_ids = artist_ids_list[i:i+BATCH_SIZE]
-        try:
-            artists = sp.artists(batch_ids)['artists']
-            for artist in artists:
-                image_url = artist['images'][0]['url'] if artist['images'] else None
-                genre = artist['genres'][0] if artist['genres'] else None
-                artist_images[artist['id']] = image_url
-                artist_genres[artist['id']] = genre
-        except Exception as e:
-            print(f"Error getting artists batch {batch_ids}: {str(e)}")
-            for artist_id in batch_ids:
-                artist_images[artist_id] = None
-                artist_genres[artist_id] = None
-    df_with_info['artist_image_url'] = df_with_info['Spotify ID'].map(lambda tid: artist_images.get(track_to_artist.get(tid)))
-    df_with_info['genre'] = df_with_info['Spotify ID'].map(lambda tid: artist_genres.get(track_to_artist.get(tid)))
-    return df_with_info
-
-# Алиас для обратной совместимости
-add_images_to_df = add_artist_info_to_df
 
 def get_artists_genres_batch(artist_ids, sp):
     """
@@ -235,3 +157,47 @@ def add_genres_to_df(df):
     artist_genres = get_artists_genres_batch(unique_artist_ids, sp)
     df_with_genres['genre'] = df_with_genres['artist_id'].map(artist_genres)
     return df_with_genres 
+
+def enrich_tracks(track_ids):
+    """
+    Enrich track info for a list of Spotify IDs. Returns dict {Spotify ID: {duration_ms, duration_min, cover_url, artist_id}}
+    """
+    sp = get_spotify_client()
+    result = {}
+    BATCH_SIZE = 50
+    for i in range(0, len(track_ids), BATCH_SIZE):
+        batch = track_ids[i:i+BATCH_SIZE]
+        tracks = sp.tracks(batch)['tracks']
+        for track in tracks:
+            if track is not None:
+                duration_ms = track['duration_ms']
+                duration_min = round(duration_ms/60000, 2) if duration_ms is not None else None
+                cover_url = track['album']['images'][0]['url'] if track['album']['images'] else None
+                artist_id = track['artists'][0]['id'] if track['artists'] else None
+                result[track['id']] = {
+                    'duration_ms': duration_ms,
+                    'duration_min': duration_min,
+                    'track_cover_url': cover_url,
+                    'artist_id': artist_id
+                }
+    return result
+
+def enrich_artists(artist_ids):
+    """
+    Enrich artist info for a list of artist IDs. Returns dict {artist_id: {artist_image_url, genre}}
+    """
+    sp = get_spotify_client()
+    result = {}
+    BATCH_SIZE = 50
+    for i in range(0, len(artist_ids), BATCH_SIZE):
+        batch = artist_ids[i:i+BATCH_SIZE]
+        artists = sp.artists(batch)['artists']
+        for artist in artists:
+            if artist is not None:
+                image_url = artist['images'][0]['url'] if artist['images'] else None
+                genre = artist['genres'][0] if artist['genres'] else None
+                result[artist['id']] = {
+                    'artist_image_url': image_url,
+                    'genre': genre
+                }
+    return result 

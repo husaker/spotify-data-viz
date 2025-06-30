@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
-from src.data.load_data import load_spotify_data_from_sheets
-from src.data.spotify_utils import add_track_lengths_to_df, add_images_to_df, add_artist_info_to_df
+from src.data.load_data import get_enriched_spotify_data
 import os
 from dotenv import load_dotenv
 import matplotlib.pyplot as plt
@@ -9,7 +8,6 @@ import matplotlib.dates as mdates
 import seaborn as sns
 import datetime
 import matplotlib.patheffects as pe
-from src.data.cache_utils import save_enriched_df, load_enriched_df
 
 st.set_page_config(layout="centered")
 
@@ -31,46 +29,13 @@ st.markdown('''
     </style>
 ''', unsafe_allow_html=True)
 
-# Cache loading and enrichment of data
-@st.cache_data(show_spinner=True)
-def load_raw_data():
+def load_and_enrich_data():
     load_dotenv()
     SHEET_URL = os.getenv('GOOGLE_SHEET_URL')
     if not SHEET_URL:
         st.error('GOOGLE_SHEET_URL is not set in .env')
         st.stop()
-    df = load_spotify_data_from_sheets(SHEET_URL)
-    return df
-
-@st.cache_data(show_spinner=True)
-def enrich_track_lengths(df):
-    return add_track_lengths_to_df(df, max_workers=2)
-
-@st.cache_data(show_spinner=True)
-def enrich_artist_info(df):
-    return add_artist_info_to_df(df, max_workers=2)
-
-def load_and_enrich_data():
-    cache_path = "data/cache/enriched_data.pkl"
-    raw_df = load_raw_data()
-    enriched_df = load_enriched_df(cache_path)
-    if enriched_df is not None:
-        # Find new tracks that are not in the cache
-        new_tracks = raw_df[~raw_df['Spotify ID'].isin(enriched_df['Spotify ID'])]
-        if not new_tracks.empty:
-            new_enriched = enrich_track_lengths(new_tracks)
-            new_enriched = enrich_artist_info(new_enriched)
-            # Combine old cache and new enriched data
-            enriched_df = pd.concat([enriched_df, new_enriched], ignore_index=True)
-            save_enriched_df(enriched_df, cache_path)
-        # Return the enriched DataFrame (no deduplication)
-        return enriched_df
-    else:
-        # No cache — enrich all data
-        enriched_df = enrich_track_lengths(raw_df)
-        enriched_df = enrich_artist_info(enriched_df)
-        save_enriched_df(enriched_df, cache_path)
-        return enriched_df
+    return get_enriched_spotify_data(SHEET_URL)
 
 def filter_by_date(df, date_from, date_to):
     return df[(df['Date'] >= date_from) & (df['Date'] <= date_to)]
@@ -205,28 +170,39 @@ def plot_top_genres(df):
 def main():
     st.markdown('<h1 class="spotify-green-title">Spotify Listening Visualization</h1>', unsafe_allow_html=True)
     df = load_and_enrich_data()
-    min_date, max_date = df['Date'].min().date(), df['Date'].max().date()
-    # Initialize session_state for dates
+
+    min_date = df['Date'].min().date()
+    max_date = df['Date'].max().date()
+
+    # Session state for date filter
     if 'date_from' not in st.session_state:
         st.session_state['date_from'] = min_date
     if 'date_to' not in st.session_state:
         st.session_state['date_to'] = max_date
+
     # Reset button
     if st.button('Reset date filter'):
         st.session_state['date_from'] = min_date
         st.session_state['date_to'] = max_date
+
     col1, col2 = st.columns(2)
     with col1:
         st.date_input('From', min_value=min_date, max_value=max_date, key='date_from')
     with col2:
         st.date_input('To', min_value=min_date, max_value=max_date, key='date_to')
+
     date_from = st.session_state['date_from']
     date_to = st.session_state['date_to']
+
     if date_from > date_to:
         st.error('Start date cannot be later than end date!')
         return
-    filtered_df = filter_by_date(df, pd.to_datetime(date_from), pd.to_datetime(date_to))
-    # Tabs for switching between graphs
+
+    # Filter: include all times on the 'To' date
+    start_dt = pd.to_datetime(date_from)
+    end_dt = pd.to_datetime(date_to) + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
+    filtered_df = df[(df['Date'] >= start_dt) & (df['Date'] <= end_dt)]
+
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         'Top 5 Artists',
         'Top 5 Tracks',
