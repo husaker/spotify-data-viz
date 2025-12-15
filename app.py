@@ -85,103 +85,46 @@ def show_top_tracks(df):
             st.markdown(f"<span style='color:gray'>Times listened: {int(row['times_listened'])}</span>", unsafe_allow_html=True)
             st.markdown(f"<span style='color:gray'>Minutes listened: {int(row['minutes_listened'])}</span>", unsafe_allow_html=True)
 
-def plot_weekly_avg_charts(df):
-    # --- Подготовка ---
-    sns.set_theme(style="dark", rc={
-        "axes.facecolor": "#191414",
-        "figure.facecolor": "#191414",
-        "axes.labelcolor": "#fff",
-        "xtick.color": "#fff",
-        "ytick.color": "#fff",
-        "text.color": "#fff"
-    })
-
-    # Приводим Date к datetime и округляем до дня
-    df['Date'] = pd.to_datetime(df['Date']).dt.floor('D')
-
-    # Если нет колонки duration_min, можно рассчитать, если есть duration_ms или duration_sec
-    if 'duration_min' not in df.columns:
-        if 'duration_ms' in df.columns:
-            df['duration_min'] = df['duration_ms'] / 1000 / 60
-        elif 'duration_sec' in df.columns:
-            df['duration_min'] = df['duration_sec'] / 60
-        else:
-            df['duration_min'] = 0  # fallback
-
+def plot_cumulative_charts(df):
     # --- Tracks ---
-    daily_tracks = df.groupby('Date').size().rename('tracks').reset_index()
-    daily_tracks['week'] = daily_tracks['Date'].dt.isocalendar().week
-    daily_tracks['year'] = daily_tracks['Date'].dt.isocalendar().year
-
-    weekly_tracks = (
-        daily_tracks.groupby(['year', 'week'])
-        .agg(
-            total_tracks=('tracks', 'sum'),
-            active_days=('Date', 'nunique')
-        )
-        .reset_index()
-    )
-    weekly_tracks['avg_daily_tracks'] = weekly_tracks['total_tracks'] / weekly_tracks['active_days']
-    weekly_tracks['week_start'] = pd.to_datetime(
-        weekly_tracks['year'].astype(str) + weekly_tracks['week'].astype(str) + '1',
-        format='%G%V%u'
-    )
-
+    sns.set_theme(style="dark", rc={"axes.facecolor": "#191414", "figure.facecolor": "#191414", "axes.labelcolor": "#fff", "xtick.color": "#fff", "ytick.color": "#fff", "text.color": "#fff"})
+    daily = df.groupby('Date').size().rename('tracks').reset_index()
+    daily = daily.sort_values('Date')
+    daily['cumulative'] = daily['tracks'].cumsum()
     fig, ax = plt.subplots(figsize=(8, 4), dpi=200)
-    line, = ax.plot(weekly_tracks['week_start'], weekly_tracks['avg_daily_tracks'], color='#1DB954', linewidth=3)
+    line, = ax.plot(daily['Date'], daily['cumulative'], color='#1DB954', linewidth=3)
+    # Glow-effect
     line.set_path_effects([pe.Stroke(linewidth=8, foreground='#1DB954', alpha=0.18), pe.Normal()])
     ax.set_facecolor('#191414')
     fig.patch.set_facecolor('#191414')
     ax.grid(axis='y', color='#1DB954', alpha=0.08)
     ax.grid(axis='x', visible=False)
-    ax.set_title('Average Daily Tracks listened per Week', color='#1DB954', fontsize=18, fontweight='bold')
-    ax.set_ylabel('Tracks (avg/day)', color='w', fontsize=12)
+    ax.set_title('Cumulative Tracks Played', color='#1DB954', fontsize=18, fontweight='bold')
+    ax.set_ylabel('Tracks', color='w', fontsize=12)
     ax.set_xlabel('')
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right', color='w')
     plt.setp(ax.get_yticklabels(), color='w')
-    ax.plot(
-        weekly_tracks['week_start'].iloc[-1],
-        weekly_tracks['avg_daily_tracks'].iloc[-1],
-        'o', color='white', markersize=8, markeredgewidth=2, markeredgecolor='#1DB954'
-    )
+    # Marker on the last point
+    ax.plot(daily['Date'].iloc[-1], daily['cumulative'].iloc[-1], 'o', color='white', markersize=8, markeredgewidth=2, markeredgecolor='#1DB954')
     st.pyplot(fig)
 
     # --- Minutes ---
-    daily_minutes = df.groupby('Date')['duration_min'].sum().reset_index()
-    daily_minutes['week'] = daily_minutes['Date'].dt.isocalendar().week
-    daily_minutes['year'] = daily_minutes['Date'].dt.isocalendar().year
-
-    weekly_minutes = (
-        daily_minutes.groupby(['year', 'week'])
-        .agg(
-            total_minutes=('duration_min', 'sum'),
-            active_days=('Date', 'nunique')
-        )
-        .reset_index()
-    )
-    weekly_minutes['avg_daily_minutes'] = weekly_minutes['total_minutes'] / weekly_minutes['active_days']
-    weekly_minutes['week_start'] = pd.to_datetime(
-        weekly_minutes['year'].astype(str) + weekly_minutes['week'].astype(str) + '1',
-        format='%G%V%u'
-    )
-
+    daily = df.groupby('Date')['duration_min'].sum().reset_index()
+    daily = daily.sort_values('Date')
+    daily['cumulative'] = daily['duration_min'].cumsum()
     fig, ax = plt.subplots(figsize=(8, 4), dpi=200)
-    line, = ax.plot(weekly_minutes['week_start'], weekly_minutes['avg_daily_minutes'], color='#1DB954', linewidth=3)
+    line, = ax.plot(daily['Date'], daily['cumulative'], color='#1DB954', linewidth=3)
     line.set_path_effects([pe.Stroke(linewidth=8, foreground='#1DB954', alpha=0.18), pe.Normal()])
     ax.set_facecolor('#191414')
     fig.patch.set_facecolor('#191414')
     ax.grid(axis='y', color='#1DB954', alpha=0.08)
     ax.grid(axis='x', visible=False)
-    ax.set_title('Average Daily Minutes listened per Week', color='#1DB954', fontsize=18, fontweight='bold')
-    ax.set_ylabel('Minutes (avg/day)', color='w', fontsize=12)
+    ax.set_title('Cumulative Minutes Listened', color='#1DB954', fontsize=18, fontweight='bold')
+    ax.set_ylabel('Minutes', color='w', fontsize=12)
     ax.set_xlabel('')
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right', color='w')
     plt.setp(ax.get_yticklabels(), color='w')
-    ax.plot(
-        weekly_minutes['week_start'].iloc[-1],
-        weekly_minutes['avg_daily_minutes'].iloc[-1],
-        'o', color='white', markersize=8, markeredgewidth=2, markeredgecolor='#1DB954'
-    )
+    ax.plot(daily['Date'].iloc[-1], daily['cumulative'].iloc[-1], 'o', color='white', markersize=8, markeredgewidth=2, markeredgecolor='#1DB954')
     st.pyplot(fig)
 
 def show_statistics(df):
@@ -237,16 +180,10 @@ def main():
     if 'date_to' not in st.session_state:
         st.session_state['date_to'] = max_date
 
-
-    col_reset, col_link = st.columns([1, 1])
     # Reset button
-    with col_reset:
-        if st.button('Reset date filter'):
-            st.session_state['date_from'] = min_date
-            st.session_state['date_to'] = max_date
-
-    with col_link:
-        st.link_button('Raw data', 'https://docs.google.com/spreadsheets/d/1-KX5LX6IBY8t5KV-9GN3RcuySFYIZu8F_XN2elH2B_c/edit?usp=sharing')
+    if st.button('Reset date filter'):
+        st.session_state['date_from'] = min_date
+        st.session_state['date_to'] = max_date
 
     col1, col2 = st.columns(2)
     with col1:
@@ -269,7 +206,7 @@ def main():
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         'Top 5 Artists',
         'Top 5 Tracks',
-        'Average Daily Charts',
+        'Cumulative Charts',
         'Top 5 Genres',
         'Statistics',
     ])
@@ -280,8 +217,8 @@ def main():
         st.markdown('<h2 class="spotify-green-title">Top 5 Tracks</h2>', unsafe_allow_html=True)
         show_top_tracks(filtered_df)
     with tab3:
-        st.markdown('<h2 class="spotify-green-title">Average Daily Charts</h2>', unsafe_allow_html=True)
-        plot_weekly_avg_charts(filtered_df)
+        st.markdown('<h2 class="spotify-green-title">Cumulative Charts</h2>', unsafe_allow_html=True)
+        plot_cumulative_charts(filtered_df)
     with tab4:
         st.markdown('<h2 class="spotify-green-title">Top 5 Genres</h2>', unsafe_allow_html=True)
         plot_top_genres(filtered_df)

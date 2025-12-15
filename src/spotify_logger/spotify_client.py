@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Sequence
 
 import requests
 
 from .config import get_config
 
 
+SPOTIFY_AUTH_URL = "https://accounts.spotify.com/authorize"
 SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_API_BASE = "https://api.spotify.com/v1"
 
@@ -19,6 +20,25 @@ class SpotifyTokens:
     expires_in: int
     token_type: str
     scope: str | None = None
+
+
+def build_authorize_url(state: str, scopes: Sequence[str]) -> str:
+    """
+    Build Spotify authorization URL for Authorization Code Flow.
+    """
+    cfg = get_config()
+    scope_str = " ".join(scopes)
+    params = {
+        "client_id": cfg.spotify_client_id,
+        "response_type": "code",
+        "redirect_uri": cfg.spotify_redirect_uri,
+        "scope": scope_str,
+        "state": state,
+        "show_dialog": "false",
+    }
+    from urllib.parse import urlencode
+
+    return f"{SPOTIFY_AUTH_URL}?{urlencode(params)}"
 
 
 def exchange_code_for_tokens(code: str) -> SpotifyTokens:
